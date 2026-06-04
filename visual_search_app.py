@@ -75,8 +75,6 @@ def load_visual_search_engine():
         
         engine = VisualSearchEngine()
         if engine.load_index():
-            # Eagerly load the model into memory during startup so the first search doesn't hang!
-            engine.load_model()
             return engine
         return None
     except Exception as e:
