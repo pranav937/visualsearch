@@ -1,4 +1,5 @@
 import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 # Set HF Cache to local directory to avoid cross-platform deployment issues
 os.environ["HF_HOME"] = "./.hf_cache"
 
@@ -44,7 +45,11 @@ class VisualSearchEngine:
     def get_image_embedding(self, image: Union[str, Image.Image]) -> np.ndarray:
         self.load_model()
         if isinstance(image, str):
-            image = Image.open(image).convert("RGB")
+            image = Image.open(image)
+            
+        # Ensure image is in RGB format for the model to prevent crashes with RGBA (PNG) images
+        if image.mode != "RGB":
+            image = image.convert("RGB")
             
         inputs = self.processor(images=image, return_tensors="pt").to(self.device)
         with torch.no_grad():

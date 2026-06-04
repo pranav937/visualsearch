@@ -1,4 +1,5 @@
 import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 # Use a local cache directory for HuggingFace to avoid disk space issues while remaining cross-platform compatible
 os.environ["HF_HOME"] = "./.hf_cache"
 
