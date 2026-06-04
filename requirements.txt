@@ -1,0 +1,12 @@
+streamlit
+pandas
+langchain
+langchain-community
+langchain-google-genai
+faiss-cpu
+langchain-openai
+streamlit-mic-recorder
+playwright
+xlsxwriter
+requests
+pillow

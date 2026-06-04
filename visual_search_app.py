@@ -1,0 +1,162 @@
+import os
+# Force HuggingFace to use G drive to avoid out of disk space error on C drive
+os.environ["HF_HOME"] = "G:/jaxmart/.hf_cache"
+
+import streamlit as st
+import pandas as pd
+from PIL import Image as PILImage
+from visual_search import VisualSearchEngine
+
+# Streamlit UI Configuration
+st.set_page_config(page_title="JaxMart Visual Search", page_icon="🔍", layout="wide")
+
+# Custom CSS
+st.markdown("""
+    <style>
+    .main-title {
+        font-size: 3rem;
+        font-weight: 800;
+        background: -webkit-linear-gradient(45deg, #FF416C, #FF4B2B);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-align: center;
+        margin-bottom: 0px;
+    }
+    .sub-title {
+        text-align: center;
+        color: #B0BEC5;
+        font-size: 1.1rem;
+        margin-bottom: 30px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="main-title">🔍 JaxMart Visual Search</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Upload an image to find similar products in the Excel Database</div>', unsafe_allow_html=True)
+st.markdown("---")
+
+# Excel file path
+EXCEL_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "all_data_final_with_images.xlsx")
+CSV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "all_data_final_with_images.csv")
+
+@st.cache_data
+def load_dataset():
+    try:
+        # Load details from the Excel file as requested
+        if os.path.exists(EXCEL_FILE_PATH):
+            df = pd.read_excel(EXCEL_FILE_PATH)
+            # Excel file might be missing Local Image Path, so we pull it from CSV
+            if 'Local Image Path' not in df.columns and os.path.exists(CSV_FILE_PATH):
+                csv_df = pd.read_csv(CSV_FILE_PATH)
+                if 'Local Image Path' in csv_df.columns:
+                    df['Local Image Path'] = csv_df['Local Image Path']
+        else:
+            df = pd.read_csv(CSV_FILE_PATH)
+            
+        if 'Product Name' in df.columns:
+            df = df.dropna(subset=['Product Name'])
+        df = df.astype(str)
+        return df
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return pd.DataFrame()
+
+# Load Dataset (Once)
+df_global = load_dataset()
+
+@st.cache_resource
+def load_visual_search_engine():
+    try:
+        import huggingface_hub.constants
+        huggingface_hub.constants.HF_HUB_CACHE = "G:/jaxmart/.hf_cache"
+        os.environ["HF_HOME"] = "G:/jaxmart/.hf_cache"
+        os.environ["TRANSFORMERS_CACHE"] = "G:/jaxmart/.hf_cache"
+        
+        engine = VisualSearchEngine()
+        if engine.load_index():
+            return engine
+        return None
+    except Exception as e:
+        st.error(f"Error loading visual search engine: {e}")
+        return None
+
+vs_engine = load_visual_search_engine()
+
+uploaded_image = st.file_uploader("Upload a product image", type=['jpg', 'jpeg', 'png'])
+
+if uploaded_image is not None and vs_engine is not None:
+    st.image(uploaded_image, width=300, caption="Your Uploaded Image")
+    st.markdown("---")
+    
+    with st.spinner("Analyzing image and searching visually similar products..."):
+        try:
+            img = PILImage.open(uploaded_image)
+            # Find the best match to identify the product's subcategory
+            best_match_results = vs_engine.search_similar_images(img, top_k=5)
+            
+            if best_match_results:
+                matched_subcategory = None
+                
+                # Find the subcategory of the closest matched product
+                for img_path, score in best_match_results:
+                    norm_path = os.path.normpath(str(img_path)).lower()
+                    if not df_global.empty and 'Local Image Path' in df_global.columns:
+                        # Normalize column paths for safe comparison
+                        matched_rows = df_global[df_global['Local Image Path'].apply(lambda x: os.path.normpath(str(x)).lower() if pd.notna(x) else '') == norm_path]
+                        if not matched_rows.empty:
+                            p_row = matched_rows.iloc[0]
+                            matched_subcategory = p_row.get('Subcategory', None)
+                            
+                            # If subcategory is missing or nan, fallback to Category
+                            if pd.isna(matched_subcategory) or str(matched_subcategory).strip() == '' or str(matched_subcategory).lower() == 'nan':
+                                matched_subcategory = p_row.get('Category', None)
+                            if matched_subcategory:
+                                break
+                
+                if matched_subcategory and str(matched_subcategory).lower() != 'nan':
+                    st.success(f"**Identified Category/Subcategory:** {matched_subcategory}")
+                    st.markdown(f"### 📷 All Products in '{matched_subcategory}':")
+                    
+                    # Filter dataset by this subcategory or category
+                    subcat_df = df_global[(df_global['Subcategory'] == matched_subcategory) | (df_global['Category'] == matched_subcategory)]
+                    
+                    # Remove exact duplicate product names so pictures don't repeat
+                    subcat_df = subcat_df.drop_duplicates(subset=['Product Name'])
+                    
+                    # Limit to 15 products to not overwhelm the UI
+                    display_df = subcat_df.head(15)
+                    
+                    cols = st.columns(3)
+                    
+                    for i, (_, row) in enumerate(display_df.iterrows()):
+                        col_idx = i % 3
+                        with cols[col_idx]:
+                            with st.container(border=True):
+                                local_img = row.get('Local Image Path', '')
+                                if os.path.exists(local_img):
+                                    try:
+                                        img_pil = PILImage.open(local_img).convert('RGB')
+                                        img_pil = img_pil.resize((300, 300))
+                                        st.image(img_pil) 
+                                    except Exception:
+                                        pass
+                                
+                                p_name = row.get('Product Name', 'Unknown')
+                                if len(p_name) > 40:
+                                    p_name = p_name[:37] + "..."
+                                    
+                                st.markdown(f"<h4 style='color: #FF4B2B; margin-bottom: 5px; min-height: 45px;'>{p_name}</h4>", unsafe_allow_html=True)
+                                
+                                # All details displayed directly without hiding
+                                st.markdown(f"**💰 Price:** <span style='color: #4CAF50; font-weight: bold;'>{row.get('Price', 'N/A')}</span>", unsafe_allow_html=True)
+                                st.markdown(f"**🏢 Company:** {row.get('Company Name', 'N/A')}")
+                                st.markdown(f"**📍 Location:** {row.get('Location', 'N/A')}")
+                                st.markdown(f"**📦 MOQ:** {row.get('MOQ', 'N/A')}")
+                                st.markdown(f"**⭐ Rating:** {row.get('Rating', 'N/A')} ({row.get('Reviews', '0')} reviews)")
+                                st.markdown("<br>", unsafe_allow_html=True)
+                else:
+                    st.warning("Could not identify a clear Subcategory for this image in the database.")
+            else:
+                st.warning("Visual Search index is empty. Please wait for the background indexing to finish.")
+        except Exception as e:
+            st.error(f"Visual search failed: {e}")
