@@ -1,7 +1,2 @@
 .hf_cache/
 __pycache__/
-*.csv
-*.xlsx
-*.faiss
-*.pkl
-products/
