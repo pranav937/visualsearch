@@ -13,3 +13,4 @@ requests
 pillow
 torch
 transformers
+openpyxl
