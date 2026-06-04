@@ -1,6 +1,6 @@
 import os
-# Force HuggingFace to use G drive to avoid out of disk space error on C drive
-os.environ["HF_HOME"] = "G:/jaxmart/.hf_cache"
+# Use a local cache directory for HuggingFace to avoid disk space issues while remaining cross-platform compatible
+os.environ["HF_HOME"] = "./.hf_cache"
 
 import streamlit as st
 import pandas as pd
@@ -68,9 +68,9 @@ df_global = load_dataset()
 def load_visual_search_engine():
     try:
         import huggingface_hub.constants
-        huggingface_hub.constants.HF_HUB_CACHE = "G:/jaxmart/.hf_cache"
-        os.environ["HF_HOME"] = "G:/jaxmart/.hf_cache"
-        os.environ["TRANSFORMERS_CACHE"] = "G:/jaxmart/.hf_cache"
+        huggingface_hub.constants.HF_HUB_CACHE = "./.hf_cache"
+        os.environ["HF_HOME"] = "./.hf_cache"
+        os.environ["TRANSFORMERS_CACHE"] = "./.hf_cache"
         
         engine = VisualSearchEngine()
         if engine.load_index():

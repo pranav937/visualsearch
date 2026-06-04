@@ -1,6 +1,6 @@
 import os
-# Set HF Cache to G drive if available to avoid C drive space issues
-os.environ["HF_HOME"] = "G:/jaxmart/.hf_cache"
+# Set HF Cache to local directory to avoid cross-platform deployment issues
+os.environ["HF_HOME"] = "./.hf_cache"
 
 import pandas as pd
 import numpy as np
