@@ -1,2 +1,5 @@
 .hf_cache/
 __pycache__/
+products/
+*.faiss
+*.pkl

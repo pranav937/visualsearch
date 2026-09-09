@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 from PIL import Image as PILImage
 from visual_search import VisualSearchEngine
+from sqlalchemy import create_engine
 
 # Streamlit UI Configuration
 st.set_page_config(page_title="JaxMart Visual Search", page_icon="🔍", layout="wide")
@@ -33,33 +34,58 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">🔍 JaxMart Visual Search</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Upload an image to find similar products in the Excel Database</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Upload an image to find similar products in the Live Database</div>', unsafe_allow_html=True)
 st.markdown("---")
 
-# Excel file path
-EXCEL_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "all_data_final_with_images.xlsx")
-CSV_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "all_data_final_with_images.csv")
+DB_URL = "postgresql://postgres:Jadequest%403009@3.111.57.216:5432/jaxmart_db"
 
 @st.cache_data
 def load_dataset():
     try:
-        # Load details from the Excel file as requested
-        if os.path.exists(EXCEL_FILE_PATH):
-            df = pd.read_excel(EXCEL_FILE_PATH)
-            # Excel file might be missing Local Image Path, so we pull it from CSV
-            if 'Local Image Path' not in df.columns and os.path.exists(CSV_FILE_PATH):
-                csv_df = pd.read_csv(CSV_FILE_PATH)
-                if 'Local Image Path' in csv_df.columns:
-                    df['Local Image Path'] = csv_df['Local Image Path']
-        else:
-            df = pd.read_csv(CSV_FILE_PATH)
+        # Fetch from database
+        engine = create_engine(DB_URL)
+        query = '''
+        SELECT 
+            l.id as listing_id,
+            l.title as "Product Name",
+            c.name as "Category",
+            c.name as "Subcategory",
+            bp."businessName" as "Company Name",
+            pd."pricePerUnit" as "Price",
+            pd."minOrderQty" as "MOQ",
+            l."avgRating" as "Rating",
+            l."reviewCount" as "Reviews"
+        FROM listings l
+        LEFT JOIN categories c ON l."categoryId" = c.id
+        LEFT JOIN product_details pd ON l.id = pd."listingId"
+        LEFT JOIN business_profiles bp ON l."sellerId" = bp."userId"
+        '''
+        df = pd.read_sql(query, engine)
+        
+        local_image_paths = []
+        base_product_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "products")
+        for listing_id in df['listing_id']:
+            img_path = None
+            if pd.notna(listing_id):
+                listing_dir = os.path.join(base_product_dir, str(listing_id))
+                if os.path.exists(listing_dir):
+                    for ext in ['png', 'jpg', 'jpeg', 'webp']:
+                        candidate = os.path.join(listing_dir, f"1.{ext}")
+                        if os.path.exists(candidate):
+                            # Ensure we store relative path as in original FAISS index
+                            img_path = os.path.join("products", str(listing_id), f"1.{ext}")
+                            break
+            local_image_paths.append(img_path)
             
+        df['Local Image Path'] = local_image_paths
+        
         if 'Product Name' in df.columns:
             df = df.dropna(subset=['Product Name'])
         df = df.astype(str)
         return df
+
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        st.error(f"Error loading data from Database: {e}")
         return pd.DataFrame()
 
 # Load Dataset (Once)
